@@ -12,6 +12,8 @@ from argparser import argparser
 from resnet import ResNet18
 from utils import progress_bar
 
+import os
+
 
 def dataloader(args):
     # Loading Data
