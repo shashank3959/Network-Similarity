@@ -45,7 +45,7 @@ def imshow(img):
     plt.show()
 
 
-def display_image(trainloader, classes):
+def display_image(trainloader, classes, args):
     # get some random training images
     dataiter = iter(trainloader)
     images, labels = dataiter.next()
@@ -53,7 +53,7 @@ def display_image(trainloader, classes):
     # show images
     imshow(torchvision.utils.make_grid(images))
     # print labels
-    print(' '.join('%5s' % classes[labels[j]] for j in range(4)))
+    print(' '.join('%5s' % classes[labels[j]] for j in range(args.batch_size)))
 
 
 def train(args, criterion, optimizer, trainloader, classes, device,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     trainloader, testloader, classes = dataloader(args)
 
     if args.show_images == True:
-        display_image(trainloader, classes)
+        display_image(trainloader, classes, args)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     best_acc = 0  # best test accuracy
@@ -135,8 +135,8 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-    if args.resume:
-        # Load checkpoint.
+    if args.resume or args.eval:
+        # Load checkpoint or model for eval.
         print('==> Resuming from checkpoint..')
         assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
         checkpoint = torch.load('./checkpoint/ckpt.pth')
@@ -144,10 +144,24 @@ if __name__ == "__main__":
         best_acc = checkpoint['acc']
         start_epoch = checkpoint['epoch']
 
-    for epoch in range(start_epoch, args.epochs+1):
-        train(args, criterion, optimizer, trainloader, classes, device,
-              net, epoch)
+    ## Train mode
+    if not args.eval:
+        for epoch in range(start_epoch, args.epochs+1):
+            train(args, criterion, optimizer, trainloader, classes, device,
+                  net, epoch)
+            test(args, criterion, optimizer, testloader, classes, device,
+                  net, epoch, best_acc)
+    else:
+        x = torch.randn(1, 3, 32, 32).to(device)
+        y = net(x)
+        y[0, 0].backward(retain_graph=True)
+        print("Params:", type(net.layer4[1].conv2.weight.grad))
+        print("Shape of net:", net.layer4[1].conv2.weight.grad.shape)
+        print("The net looks like:", net)
         test(args, criterion, optimizer, testloader, classes, device,
-              net, epoch, best_acc)
+             net, 1, best_acc)
+        net.weight()
+        print("Zero grad Params:", type(net.layer4[1].conv2.weight.grad))
 
-
+        # Zero out the weights before the next call
+        net.layer4[1].conv2.weight.grad.data.zero_()

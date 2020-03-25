@@ -18,6 +18,9 @@ def argparser():
     # Model State arguments
     parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 
+    # Whether to train or eval
+    parser.add_argument('--eval', '-e', action='store_true', help='resume from checkpoint')
+
     args = parser.parse_args()
 
     return args
