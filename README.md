@@ -1,6 +1,7 @@
 # RepDistiller
 
-This repo:
+This repo has been heavily inspired from the work of Yonlong Tian (yonglong@mit.edu) for their ICLR 2020 paper.
+It contains additional KD experiments. 
 
 **(1) covers the implementation of the following ICLR 2020 paper:**
 
@@ -109,9 +110,12 @@ Performance is measured by classification accuracy (%)
 | NST | 58.16 | 64.96 | 71.28 | 74.12 | 74.68 | 74.89 |
 | **CRD** | **69.73** | **69.11** | **74.30** | **75.11** | **75.65** | **76.05** |
 
-## Citation
 
-If you find this repo useful for your research, please consider citing the paper
+## Acknowledgement
+
+The code in this repo has been heavily inspired from the work on Yonlong Tian (yonglong@mit.edu) et al. Many thanks to him for making the code publicly available. 
+
+If you find this repo useful for your research, please consider citing his paper
 
 ```
 @inproceedings{tian2019crd,
@@ -121,8 +125,3 @@ If you find this repo useful for your research, please consider citing the paper
   year={2020}
 }
 ```
-For any questions, please contact Yonglong Tian (yonglong@mit.edu).
-
-## Acknowledgement
-
-Thanks to Baoyun Peng for providing the code of CC and to Frederick Tung for verifying our reimplementation of SP. Thanks also go to authors of other papers who make their code publicly available.
