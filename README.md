@@ -1,4 +1,4 @@
-# RepDistiller
+# Experiments on Network Similarity 
 
 This repo has been heavily inspired from the work of Yonlong Tian (yonglong@mit.edu) for their ICLR 2020 paper.
 It contains additional KD experiments. 
