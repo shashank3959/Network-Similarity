@@ -30,7 +30,7 @@ It contains additional KD experiments.
 
 ## Installation
 
-This repo was tested with Ubuntu 16.04.5 LTS, Python 3.5, PyTorch 0.4.0, and CUDA 9.0. But it should be runnable with recent PyTorch versions >=0.4.0
+This repo was tested with Ubuntu 18.04.4 LTS, Python 3.7, PyTorch 1.0.0, and CUDA 9.1. But it should be runnable with all recent PyTorch versions >=0.4.0
 
 ## Running
 
