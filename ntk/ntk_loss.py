@@ -6,7 +6,6 @@ class NTKLoss(nn.Module):
     Computes the loss over the two feature map matrices
 
     Args:
-
     """
     def __init__(self):
         super(NTKLoss, self).__init__()
