@@ -67,7 +67,7 @@ This repo was tested with Ubuntu 18.04.4 LTS, Python 3.7, PyTorch 1.0.0, and CUD
    Or for instance to run NTK distillation use "--distill ntk". Keep "b" a very small value like 0.0002.<br>
    NTK distillation only supports resnet56 (teacher) to resnet32 (student) distillation currently.
     ```
-    python': python train_student.py --path_t ./save/models/resnet56_vanilla/ckpt_epoch_240.pth --distill ntk --model_s resnet32 -a 1 -b 0.0002 --trial 1 --batch_size 32     
+    python train_student.py --path_t ./save/models/resnet56_vanilla/ckpt_epoch_240.pth --distill ntk --model_s resnet32 -a 1 -b 0.0002 --trial 1 --batch_size 32     
     ```
    Current Issues: NTK Distillation loss is blowing out of proportions because of row-wise dot products. Still looking into this.
 
