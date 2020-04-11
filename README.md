@@ -64,6 +64,11 @@ This repo was tested with Ubuntu 18.04.4 LTS, Python 3.7, PyTorch 1.0.0, and CUD
     ```
     python train_student.py --path_t ./save/models/resnet32x4_vanilla/ckpt_epoch_240.pth --distill crd --model_s resnet8x4 -a 1 -b 0.8 --trial 1     
     ```
+   Or for instance to run NTK distillation use "--distill ntk". Keep "b" a very small value like 0.0002.
+    ```
+    python train_student.py --path_t ./save/models/resnet32x4_vanilla/ckpt_epoch_240.pth --distill crd --model_s resnet8x4 -a 1 -b 0.8 --trial 1     
+    ```
+   Current Issues: NTK Distillation loss is blowing out of proportions because of row-wise dot products. Still looking into this.
 
 3. (optional) Train teacher networks from scratch. Example commands are in `scripts/run_cifar_vanilla.sh`
 
