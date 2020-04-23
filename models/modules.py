@@ -21,8 +21,7 @@ class Conv2d(nn.Conv2d):
     """
     super(Conv2d, self).__init__(in_channels, out_channels, kernel_size, 
       stride, padding, bias=bias)
-    self.grad_proj = grad_proj
-    self.reset_rv()
+    self.reset_grad_proj(grad_proj)
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
@@ -43,8 +42,13 @@ class Conv2d(nn.Conv2d):
       self.register_buffer('rv_norm_sqr', None)
 
   def get_rv_norm_sqr(self):
-    """ Returns squared norm of random vector. """
+    """ Returns the squared norm of the random vector. """
     return self.rv_norm_sqr
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+    self.reset_rv()
 
   def forward(self, x, jvp=None):
     """
@@ -53,16 +57,14 @@ class Conv2d(nn.Conv2d):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    x_out = super(Conv2d, self).forward(x)
+    (x_out, jvp_out) = super(Conv2d, self).forward(x), None
     if self.grad_proj:
       jvp_out = F.conv2d(
         x, self.weight_rv, self.bias_rv, self.stride, self.padding)
       if jvp is not None:
         jvp_out = jvp_out + F.conv2d(
           jvp, self.weight, None, self.stride, self.padding)
-      return x_out, jvp_out
-    else:
-      return x_out
+    return x_out, jvp_out
 
 
 class Linear(nn.Linear):
@@ -77,8 +79,7 @@ class Linear(nn.Linear):
         a randomly sampled Gaussian unit vector. Default: False
     """
     super(Linear, self).__init__(in_features, out_features, bias=bias)
-    self.grad_proj = grad_proj
-    self.reset_rv()
+    self.reset_grad_proj(grad_proj)
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
@@ -98,8 +99,13 @@ class Linear(nn.Linear):
       self.register_buffer('rv_norm_sqr', None)
 
   def get_rv_norm_sqr(self):
-    """ Returns squared norm of random vector. """
+    """ Returns the squared norm of the random vector. """
     return self.rv_norm_sqr
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+    self.reset_rv()
 
   def forward(self, x, jvp=None):
     """
@@ -108,14 +114,12 @@ class Linear(nn.Linear):
       jvp (float, [N, C], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    x_out = super(Linear, self).forward(x)
+    (x_out, jvp_out) = super(Linear, self).forward(x), None
     if self.grad_proj:
       jvp_out = F.linear(x, self.weight_rv, self.bias_rv)
       if jvp is not None:
         jvp_out = jvp_out + F.linear(jvp, self.weight, None)
-      return x_out, jvp_out
-    else:
-      return x_out
+    return x_out, jvp_out
 
 
 class BatchNorm2d(nn.BatchNorm2d):
@@ -131,8 +135,7 @@ class BatchNorm2d(nn.BatchNorm2d):
         a randomly sampled Gaussian unit vector. Default: False
     """
     super(BatchNorm2d, self).__init__(num_features, eps, momentum)
-    self.grad_proj = grad_proj
-    self.reset_rv()
+    self.reset_grad_proj(grad_proj)
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
@@ -148,14 +151,33 @@ class BatchNorm2d(nn.BatchNorm2d):
       self.register_buffer('rv_norm_sqr', None)
 
   def get_rv_norm_sqr(self):
-    """ Returns squared norm of random vector. """
+    """ Returns the squared norm of the random vector. """
     return self.rv_norm_sqr
 
-  def batch_norm(self, x, mean, var, eps, weight, bias):
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+    self.reset_rv()
+
+  def batch_norm(self, x, mean, inv_var, weight, bias):
     """ Performs batch normalization. """
-    inv_var = 1. / (var + eps) ** 0.5
-    weight, bias = weight.view(1, -1, 1, 1), bias.view(1, -1, 1, 1)
-    x_out = weight * (x - mean) * inv_var + bias
+    if mean is not None:
+      if len(mean.shape) == 1:
+        mean = mean.view(1, -1, 1, 1)
+    else:
+      mean = 0.
+    if len(inv_var.shape) == 1:
+      inv_var = inv_var.view(1, -1, 1, 1)
+    
+    if len(weight.shape) == 1:
+      weight = weight.view(1, -1, 1, 1)
+    if bias is not None:
+      if len(bias.shape) == 1:
+        bias = bias.view(1, -1, 1, 1)
+    else:
+      bias = 0.
+    
+    x_out = weight * (x - mean) * inv_var ** .5 + bias
     return x_out
 
   def forward(self, x, jvp=None):
@@ -165,27 +187,29 @@ class BatchNorm2d(nn.BatchNorm2d):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    x_out = super(BatchNorm2d, self).forward(x)
+    (x_out, jvp_out) = super(BatchNorm2d, self).forward(x), None
     if self.grad_proj:
       if self.training:  # training mode, use mini-batch statistics
         mean = torch.mean(x, dim=(0, 2, 3), keepdim=True)
-        var = torch.var(x, dim=(0, 2, 3), keepdim=True)  # unbiased
+        var = torch.var(x, dim=(0, 2, 3), unbiased=False, keepdim=True)
+        inv_var = 1. / (var + self.eps)
         jvp_out = self.batch_norm(
-          x, mean, var, self.eps, self.weight_rv, self.bias_rv)
+          x, mean, inv_var, self.weight_rv, self.bias_rv)
         if jvp is not None:
-          jvp = jvp - torch.mean(jvp, dim=(0, 2, 3), keepdim=True)
-          jvp_out = jvp_out + self.batch_norm(
-            jvp, 0., var, self.eps, self.weight, 0.)  
+          jvp_mean = torch.mean(jvp, dim=(0, 2, 3), keepdim=True)
+          diff, jvp_diff = x - mean, jvp - jvp_mean
+          jvp_out = jvp_out + self.weight.view(1, -1, 1, 1) * inv_var ** .5 * (
+            jvp_diff - diff * inv_var * torch.mean(
+              diff * jvp_diff, dim=(0, 2, 3), keepdim=True))
       else:              # evaluation mode, use running statistics
         mean, var = self.running_mean, self.running_var
+        inv_var = 1. / (var + self.eps)
         jvp_out = self.batch_norm(
-          x, mean, var, self.eps, self.weight_rv, self.bias_rv)
+          x, mean, inv_var, self.weight_rv, self.bias_rv)
         if jvp is not None:
           jvp_out = jvp_out + self.batch_norm(
-            jvp, 0., var, self.eps, self.weight, 0.)
-      return x_out, jvp_out
-    else:
-      return x_out
+            jvp, None, inv_var, self.weight, None)
+    return x_out, jvp_out
 
 
 class ReLU(nn.ReLU):
@@ -198,6 +222,10 @@ class ReLU(nn.ReLU):
         a randomly sampled Gaussian unit vector. Default: False
     """
     super(ReLU, self).__init__(inplace)
+    self.reset_grad_proj(grad_proj)
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
     self.grad_proj = grad_proj
 
   def forward(self, x, jvp=None):
@@ -207,12 +235,10 @@ class ReLU(nn.ReLU):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    x_out = super(ReLU, self).forward(x)
+    (x_out, jvp_out) = super(ReLU, self).forward(x), None
     if self.grad_proj and jvp is not None:
       jvp_out = jvp * (x_out > 0).float()
-      return x_out, jvp_out
-    else:
-      return x_out
+    return x_out, jvp_out
 
 
 class LeakyReLU(nn.LeakyReLU):
@@ -226,7 +252,11 @@ class LeakyReLU(nn.LeakyReLU):
       grad_proj (bool, optional): If True, projects per-sample Jacobian on
         a randomly sampled Gaussian unit vector. Default: False
     """
-    super(ReLU, self).__init__(negative_slope, inplace)
+    super(LeakyReLU, self).__init__(negative_slope, inplace)
+    self.reset_grad_proj(grad_proj)
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
     self.grad_proj = grad_proj
 
   def forward(self, x, jvp=None):
@@ -236,10 +266,78 @@ class LeakyReLU(nn.LeakyReLU):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    x_out = super(LeakyReLU, self).forward(x)
+    (x_out, jvp_out) = super(LeakyReLU, self).forward(x), None
     if self.grad_proj and jvp is not None:
       jvp_out = jvp * (
         (x_out > 0).float() + self.negative_slope * (x_out < 0).float())
-      return x_out, jvp_out
-    else:
-      return x_out
+    return x_out, jvp_out
+
+
+class AvgPool2d(nn.AvgPool2d):
+  def __init__(self, kernel_size, stride=None, padding=0, grad_proj=False):
+    """
+    Args:
+      kernel_size (int or tuple): the size of the pooling window.
+      stride (int, optional): the stride of the pooling window. 
+        Default: kernel_size
+      padding (int, optional): implicit zero padding to be added on both side.
+      grad_proj (bool, optional): If True, projects per-sample Jacobian on
+        a randomly sampled Gaussian unit vector. Default: False
+    """
+    super(AvgPool2d, self).__init__(kernel_size, stride, padding)
+    self.reset_grad_proj(grad_proj)
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+
+  def forward(self, x, jvp=None):
+    """
+    Args:
+      x (float, [N, C, H, W]): input.
+      jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
+        upstream layers. Default: None
+    """
+    (x_out, jvp_out) = super(AvgPool2d, self).forward(x), None
+    if self.grad_proj and jvp is not None:
+      jvp_out = super(AvgPool2d, self).forward(jvp)
+    return x_out, jvp_out
+
+
+class MaxPool2d(nn.MaxPool2d):
+  def __init__(self, kernel_size, stride=None, padding=0, grad_proj=False):
+    """
+    Args:
+      kernel_size (int or tuple): the size of the pooling window.
+      stride (int, optional): the stride of the pooling window. 
+        Default: kernel_size
+      padding (int, optional): implicit zero padding to be added on both side.
+      grad_proj (bool, optional): If True, projects per-sample Jacobian on
+        a randomly sampled Gaussian unit vector. Default: False
+    """
+    super(MaxPool2d, self).__init__(kernel_size, stride, padding,
+      return_indices=True)
+    self.reset_grad_proj(grad_proj)
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+
+  def selective_pool(self, x, indices):
+    """Pools the input according to the given indices."""
+    flat_x = x.flatten(start_dim=2)
+    flat_indices = indices.flatten(start_dim=2)
+    x_out = flat_x.gather(dim=2, index=flat_indices).view_as(indices)
+    return x_out
+
+  def forward(self, x, jvp=None):
+    """
+    Args:
+      x (float, [N, C, H, W]): input.
+      jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
+        upstream layers. Default: None
+    """
+    (x_out, indices), jvp_out = super(MaxPool2d, self).forward(x), None
+    if self.grad_proj and jvp is not None:
+      jvp_out = self.selective_pool(jvp, indices)
+    return x_out, jvp_out
