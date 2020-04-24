@@ -57,7 +57,7 @@ class Conv2d(nn.Conv2d):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(Conv2d, self).forward(x), None
+    x_out, jvp_out = super(Conv2d, self).forward(x), None
     if self.grad_proj:
       jvp_out = F.conv2d(
         x, self.weight_rv, self.bias_rv, self.stride, self.padding)
@@ -114,7 +114,7 @@ class Linear(nn.Linear):
       jvp (float, [N, C], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(Linear, self).forward(x), None
+    x_out, jvp_out = super(Linear, self).forward(x), None
     if self.grad_proj:
       jvp_out = F.linear(x, self.weight_rv, self.bias_rv)
       if jvp is not None:
@@ -187,7 +187,7 @@ class BatchNorm2d(nn.BatchNorm2d):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(BatchNorm2d, self).forward(x), None
+    x_out, jvp_out = super(BatchNorm2d, self).forward(x), None
     if self.grad_proj:
       if self.training:  # training mode, use mini-batch statistics
         mean = torch.mean(x, dim=(0, 2, 3), keepdim=True)
@@ -235,7 +235,7 @@ class ReLU(nn.ReLU):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(ReLU, self).forward(x), None
+    x_out, jvp_out = super(ReLU, self).forward(x), None
     if self.grad_proj and jvp is not None:
       jvp_out = jvp * (x_out > 0).float()
     return x_out, jvp_out
@@ -266,7 +266,7 @@ class LeakyReLU(nn.LeakyReLU):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(LeakyReLU, self).forward(x), None
+    x_out, jvp_out = super(LeakyReLU, self).forward(x), None
     if self.grad_proj and jvp is not None:
       jvp_out = jvp * (
         (x_out > 0).float() + self.negative_slope * (x_out < 0).float())
@@ -298,9 +298,37 @@ class AvgPool2d(nn.AvgPool2d):
       jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
         upstream layers. Default: None
     """
-    (x_out, jvp_out) = super(AvgPool2d, self).forward(x), None
+    x_out, jvp_out = super(AvgPool2d, self).forward(x), None
     if self.grad_proj and jvp is not None:
       jvp_out = super(AvgPool2d, self).forward(jvp)
+    return x_out, jvp_out
+
+
+class AdaptiveAvgPool2d(nn.AdaptiveAvgPool2d):
+  def __init__(self, output_size, grad_proj=False):
+    """
+    Args:
+      output_size (int or tuple): the target output size.
+      grad_proj (bool, optional): If True, projects per-sample Jacobian on
+        a randomly sampled Gaussian unit vector. Default: False
+    """
+    super(AdaptiveAvgPool2d, self).__init__(output_size)
+    self.reset_grad_proj(grad_proj)
+
+  def reset_grad_proj(self, grad_proj):
+    """ Turns on/off Jacobian projection. """
+    self.grad_proj = grad_proj
+
+  def forward(self, x, jvp=None):
+    """
+    Args:
+      x (float, [N, C, H, W]): input.
+      jvp (float, [N, C, H, W], optional): per-sample Jacobian projection from
+        upstream layers. Default: None
+    """
+    x_out, jvp_out = super(AdaptiveAvgPool2d, self).forward(x), None
+    if self.grad_proj and jvp is not None:
+      jvp_out = super(AdaptiveAvgPool2d, self).forward(jvp)
     return x_out, jvp_out
 
 
@@ -341,3 +369,19 @@ class MaxPool2d(nn.MaxPool2d):
     if self.grad_proj and jvp is not None:
       jvp_out = self.selective_pool(jvp, indices)
     return x_out, jvp_out
+
+
+class Sequential(nn.Sequential):
+  def __init__(self, *args):
+    super(Sequential, self).__init__(*args)
+
+  def forward(self, x, jvp=None):
+    """
+    Args:
+      x (float, [N, ...]): input.
+      jvp (float, [N, ...], optional): per-sample Jacobian projection from
+        upstream layers. Default: None
+    """
+    for module in self:
+      (x, jvp) = module(x, jvp)
+    return x, jvp
