@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from modules import *
+from .modules import *
 
 
 class ConvBlock(nn.Module):

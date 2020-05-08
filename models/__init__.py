@@ -5,6 +5,7 @@ from .vgg import vgg19_bn, vgg16_bn, vgg13_bn, vgg11_bn, vgg8_bn
 from .mobilenetv2 import mobile_half
 from .ShuffleNetv1 import ShuffleV1
 from .ShuffleNetv2 import ShuffleV2
+from .resnet_rp import *
 
 model_dict = {
     'resnet8': resnet8,
@@ -29,4 +30,6 @@ model_dict = {
     'MobileNetV2': mobile_half,
     'ShuffleV1': ShuffleV1,
     'ShuffleV2': ShuffleV2,
+    'resnet_50_rp': resnet50, #RP
+    'resnet_18_rp': resnet18, #RP
 }
