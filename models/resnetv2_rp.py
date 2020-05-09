@@ -16,9 +16,9 @@ class BasicBlock(nn.Module):
     def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
         super(BasicBlock, self).__init__()
         self.is_last = is_last
-        self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, grad_proj)
+        self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, grad_proj=grad_proj)
         self.bn1 = BatchNorm2d(planes, grad_proj)
-        self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, grad_proj)
+        self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=grad_proj)
         self.bn2 = BatchNorm2d(planes, grad_proj)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
 
@@ -26,7 +26,7 @@ class BasicBlock(nn.Module):
         self.shortcut = Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut, jvp = Sequential(
-                Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, grad_proj),
+                Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, grad_proj=grad_proj),
                 BatchNorm2d(self.expansion * planes, grad_proj)
             )
 
@@ -112,11 +112,11 @@ class Bottleneck(nn.Module):
             bn1_rv_norm_sqr = self.bn1.get_rv_norm_sqr()
             bn2_rv_norm_sqr = self.bn2.get_rv_norm_sqr()
             bn3_rv_norm_sqr = self.bn3.get_rv_norm_sqr()
-            self.rv_norm_sqr =
+            self.rv_norm_sqr = \
             conv1_rv_norm_sqr + conv2_rv_norm_sqr + conv3_rv_norm_sqr + \
             bn1_rv_norm_sqr + bn2_rv_norm_sqr + bn3_rv_norm_sqr
         else:
-        self.register_buffer('rv_norm_sqr', None)
+            self.register_buffer('rv_norm_sqr', None)
 
     def get_rv_norm_sqr(self):
         """ Returns the squared norm of the random vector. """
@@ -161,14 +161,15 @@ class ResNet(nn.Module):
         self.in_planes = 64
         self.grad_proj = grad_proj
 
-        self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False, self.grad_proj)
+        self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=self.grad_proj)
         self.bn1 = BatchNorm2d(64, self.grad_proj)
+        self.relu = ReLU(inplace=True, grad_proj=grad_proj)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
         self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.linear = nn.Linear(512 * block.expansion, num_classes)
+        self.avgpool = AdaptiveAvgPool2d((1, 1), grad_proj=grad_proj)
+        self.linear = Linear(512 * block.expansion, num_classes, grad_proj=grad_proj)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -187,6 +188,8 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
+        self._compute_rv_norm_sqr()
+
     def get_feat_modules(self):
         feat_m = nn.ModuleList([])
         feat_m.append(self.conv1)
@@ -197,6 +200,7 @@ class ResNet(nn.Module):
         feat_m.append(self.layer4)
         return feat_m
 
+    # WARNING: Does this return a tuple now?
     def get_bn_before_relu(self):
         if isinstance(self.layer1[0], Bottleneck):
             bn1 = self.layer1[-1].bn3
@@ -220,30 +224,68 @@ class ResNet(nn.Module):
             stride = strides[i]
             layers.append(block(self.in_planes, planes, stride, i == num_blocks - 1))
             self.in_planes = planes * block.expansion
-        return nn.Sequential(*layers)
+        return Sequential(*layers)
 
+    def _compute_rv_norm_sqr(self):
+        """ Returns the squared norm of the random vector. """
+        if self.grad_proj:
+            self.rv_norm_sqr = self.conv1.get_rv_norm_sqr()
+            for l in self.layer1:
+                self.rv_norm_sqr += l.get_rv_norm_sqr()
+            for l in self.layer2:
+                self.rv_norm_sqr += l.get_rv_norm_sqr()
+            for l in self.layer3:
+                self.rv_norm_sqr += l.get_rv_norm_sqr()
+            for l in self.layer4:
+                self.rv_norm_sqr += l.get_rv_norm_sqr()
+            self.rv_norm_sqr += self.linear.get_rv_norm_sqr()
+        else:
+            self.register_buffer('rv_norm_sqr', None)
+
+    def get_rv_norm_sqr(self):
+        """ Returns the squared norm of the random vector. """
+        return self.rv_norm_sqr
+
+    def reset_grad_proj(self, grad_proj):
+        """ Turns on/off Jacobian projection. """
+        self.grad_proj = grad_proj
+        self.conv1.reset_grad_proj(grad_proj)
+        for l in self.layer1:
+            l.reset_grad_proj(grad_proj)
+        for l in self.layer2:
+            l.reset_grad_proj(grad_proj)
+        for l in self.layer3:
+            l.reset_grad_proj(grad_proj)
+        for l in self.layer4:
+            l.reset_grad_proj(grad_proj)
+        self.relu.reset_grad_proj(grad_proj)
+        self.avgpool.reset_grad_proj(grad_proj)
+        self.linear.reset_grad_proj(grad_proj)
+        self._compute_rv_norm_sqr()
+
+    # WARNING: Preactivation based method will not work now
     def forward(self, x, is_feat=False, preact=False):
-        out = F.relu(self.bn1(self.conv1(x)))
-        f0 = out
-        out, f1_pre = self.layer1(out)
-        f1 = out
-        out, f2_pre = self.layer2(out)
-        f2 = out
-        out, f3_pre = self.layer3(out)
-        f3 = out
-        out, f4_pre = self.layer4(out)
-        f4 = out
-        out = self.avgpool(out)
-        out = out.view(out.size(0), -1)
-        f5 = out
-        out = self.linear(out)
+        (x_out, jvp) = self.relu(*self.bn1(*self.conv1(x)))
+        f0 = x_out
+        (x_out, jvp) = self.layer1(x_out, jvp)
+        f1 = x_out
+        (x_out, jvp) = self.layer2(x_out, jvp)
+        f2 = x_out
+        (x_out, jvp) = self.layer3(x_out, jvp)
+        f3 = x_out
+        (x_out, jvp) = self.layer4(x_out, jvp)
+        f4 = x_out
+        (x_out, jvp) = self.avgpool(x_out, jvp)
+        x_out = x_out.view(out.size(0), -1)
+        f5 = x_out
+        (x_out, jvp) = self.linear(x_out, jvp)
         if is_feat:
             if preact:
                 return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], out]
             else:
                 return [f0, f1, f2, f3, f4, f5], out
         else:
-            return out
+            return (x_out, jvp)
 
 
 def ResNet18(**kwargs):
