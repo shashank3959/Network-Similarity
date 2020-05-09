@@ -62,7 +62,7 @@ def parse_option():
                         choices=['resnet8', 'resnet14', 'resnet20', 'resnet32', 'resnet44', 'resnet56', 'resnet110',
                                  'resnet8x4', 'resnet32x4', 'wrn_16_1', 'wrn_16_2', 'wrn_40_1', 'wrn_40_2',
                                  'vgg8', 'vgg11', 'vgg13', 'vgg16', 'vgg19', 'ResNet50',
-                                 'MobileNetV2', 'ShuffleV1', 'ShuffleV2'])
+                                 'MobileNetV2', 'ShuffleV1', 'ShuffleV2', 'ResNet18'])
     parser.add_argument('--path_t', type=str, default=None, help='teacher model snapshot')
 
     # distillation
@@ -108,6 +108,7 @@ def parse_option():
         opt.lr_decay_epochs.append(int(it))
 
     opt.model_t = get_teacher_name(opt.path_t)
+    print("Teacher name is:", opt.model_t)
 
     opt.model_name = 'S:{}_T:{}_{}_{}_r:{}_a:{}_b:{}_{}'.format(opt.model_s, opt.model_t, opt.dataset, opt.distill,
                                                                 opt.gamma, opt.alpha, opt.beta, opt.trial)

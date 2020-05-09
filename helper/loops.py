@@ -5,8 +5,6 @@ import time
 import torch
 
 from .util import AverageMeter, accuracy
-from .ntk_util import generate_featuremaps, compute_rowwise_dot
-from functools import reduce
 
 
 def train_vanilla(epoch, train_loader, model, criterion, optimizer, opt):
@@ -94,30 +92,11 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
     top5 = AverageMeter()
 
     end = time.time()
-
-    batch_size = opt.batch_size
-    # Declare FMAPS for student
-    last_conv_s = model_s.layer3[4].conv2
-    layer_params_s = model_s.state_dict()['layer3.4.conv2.weight']
-    num_params_s = reduce(lambda x, y: x * y, layer_params_s.shape)
-    fmap_s = torch.zeros([batch_size, num_params_s], requires_grad=True).cuda()
-    ntk_mat_s = torch.zeros(batch_size, batch_size, requires_grad=True).cuda()
-
-    # Declare FMAPS for teacher
-    last_conv_t = model_t.layer3[8].conv2
-    layer_params_t = model_t.state_dict()['layer3.8.conv2.weight']
-    num_params_t = reduce(lambda x, y: x * y, layer_params_t.shape)
-    fmap_t = torch.zeros([batch_size, num_params_t], requires_grad=True).cuda()
-    ntk_mat_t = torch.zeros(batch_size, batch_size, requires_grad=True).cuda()
-
     for idx, data in enumerate(train_loader):
         if opt.distill in ['crd']:
             input, target, index, contrast_idx = data
         else:
             input, target, index = data
-
-        # print("Shapes: Input", input.shape, "target:", target.shape, "index:", index.shape)
-        # print("Index content: ", index)
         data_time.update(time.time() - end)
 
         input = input.float()
@@ -141,26 +120,9 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
         loss_cls = criterion_cls(logit_s, target)
         loss_div = criterion_div(logit_s, logit_t)
 
-        tim1 = time.time()
         # other kd beyond KL divergence
         if opt.distill == 'kd':
             loss_kd = 0
-        elif opt.distill == 'ntk':
-            # Empty the tensors
-            fmap_s = fmap_s.new_zeros((batch_size, num_params_s))
-            fmap_t = fmap_s.new_zeros((batch_size, num_params_t))
-
-            # Generate (batch-size x num_param) matrices
-            fmap_s = generate_featuremaps(model_s, input, target, opt, fmap_s, isStudent=True)
-            fmap_t = generate_featuremaps(model_t, input, target, opt, fmap_t, isStudent=False)
-
-            # Compute row-wise dot product for each
-            ntk_mat_s = compute_rowwise_dot(fmap_s, ntk_mat_s)
-            ntk_mat_t = compute_rowwise_dot(fmap_t, ntk_mat_t)
-            # print("NTK Student:", ntk_mat_s)
-            # print("NTK Teacher:", ntk_mat_t)
-            loss_kd = criterion_kd(ntk_mat_s, ntk_mat_t)
-            # print("KD loss=", loss_kd)
         elif opt.distill == 'hint':
             f_s = module_list[1](feat_s[opt.hint_layer])
             f_t = feat_t[opt.hint_layer]
@@ -219,11 +181,7 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
         else:
             raise NotImplementedError(opt.distill)
 
-        print("Loss calc time:", time.time()-tim1)
         loss = opt.gamma * loss_cls + opt.alpha * loss_div + opt.beta * loss_kd
-        print("loss_cls:", loss_cls)
-        print("loss_div:", loss_div)
-        print("loss_kd:", loss_kd)
 
         acc1, acc5 = accuracy(logit_s, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
@@ -232,13 +190,7 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
 
         # ===================backward=====================
         optimizer.zero_grad()
-
-        # To view the grad of a non-leaf variable in graph, we need .retain_grad()
-        # fmap_s.retain_grad()
-
-        loss.backward(retain_graph=True)
-
-        # print("FMAP_S Grad:", fmap_s.grad)
+        loss.backward()
         optimizer.step()
 
         # ===================meters=====================
