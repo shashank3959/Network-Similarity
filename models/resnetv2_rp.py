@@ -37,7 +37,10 @@ class BasicBlock(nn.Module):
         if self.grad_proj:
             conv1_rv_norm_sqr = self.conv1.get_rv_norm_sqr()
             conv2_rv_norm_sqr = self.conv2.get_rv_norm_sqr()
-            self.rv_norm_sqr = conv1_rv_norm_sqr + conv2_rv_norm_sqr
+            bn1_rv_norm_sqr = self.bn1.get_rv_norm_sqr()
+            bn2_rv_norm_sqr = self.bn2.get_rv_norm_sqr()
+            self.rv_norm_sqr = conv1_rv_norm_sqr + conv2_rv_norm_sqr + bn1_rv_norm_sqr + \
+                               bn2_rv_norm_sqr
         else:
             self.register_buffer('rv_norm_sqr', None)
 
@@ -50,6 +53,8 @@ class BasicBlock(nn.Module):
         self.grad_proj = grad_proj
         self.conv1.reset_grad_proj(grad_proj)
         self.conv2.reset_grad_proj(grad_proj)
+        self.bn1.reset_grad_proj(grad_proj)
+        self.bn2.reset_grad_proj(grad_proj)
         self.relu.reset_grad_proj(grad_proj)
         self._compute_rv_norm_sqr()
 
@@ -96,6 +101,40 @@ class Bottleneck(nn.Module):
                 BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
             )
 
+        self._compute_rv_norm_sqr()
+
+    def _compute_rv_norm_sqr(self):
+        """ Returns the squared norm of the random vector. """
+        if self.grad_proj:
+            conv1_rv_norm_sqr = self.conv1.get_rv_norm_sqr()
+            conv2_rv_norm_sqr = self.conv2.get_rv_norm_sqr()
+            conv3_rv_norm_sqr = self.conv3.get_rv_norm_sqr()
+            bn1_rv_norm_sqr = self.bn1.get_rv_norm_sqr()
+            bn2_rv_norm_sqr = self.bn2.get_rv_norm_sqr()
+            bn3_rv_norm_sqr = self.bn3.get_rv_norm_sqr()
+            self.rv_norm_sqr =
+            conv1_rv_norm_sqr + conv2_rv_norm_sqr + conv3_rv_norm_sqr + \
+            bn1_rv_norm_sqr + bn2_rv_norm_sqr + bn3_rv_norm_sqr
+        else:
+        self.register_buffer('rv_norm_sqr', None)
+
+    def get_rv_norm_sqr(self):
+        """ Returns the squared norm of the random vector. """
+        return self.rv_norm_sqr
+
+    def reset_grad_proj(self, grad_proj):
+        """ Turns on/off Jacobian projection. """
+        self.grad_proj = grad_proj
+        self.conv1.reset_grad_proj(grad_proj)
+        self.conv2.reset_grad_proj(grad_proj)
+        self.conv3.reset_grad_proj(grad_proj)
+        self.bn1.reset_grad_proj(grad_proj)
+        self.bn2.reset_grad_proj(grad_proj)
+        self.bn3.reset_grad_proj(grad_proj)
+        self.relu.reset_grad_proj(grad_proj)
+        self._compute_rv_norm_sqr()
+
+
     def forward(self, x, jvp=None):
         (x_out, jvp_out) = self.relu(*self.bn1(*self.conv1(x, jvp)))
         (x_out, jvp_out) = self.relu(*self.bn2(*self.conv2(x_out, jvp_out)))
@@ -116,12 +155,14 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, zero_init_residual=False):
+    def __init__(self, block, num_blocks, num_classes=10, zero_init_residual=False,
+                 grad_proj=False):
         super(ResNet, self).__init__()
         self.in_planes = 64
+        self.grad_proj = grad_proj
 
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False, self.grad_proj)
+        self.bn1 = BatchNorm2d(64, self.grad_proj)
         self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
         self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
         self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
