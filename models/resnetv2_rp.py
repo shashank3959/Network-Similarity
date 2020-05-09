@@ -61,7 +61,7 @@ class BasicBlock(nn.Module):
             upstream layers. Default: None
         """
         (x_out, jvp_out) = self.relu(*self.bn1(*self.conv1(x, jvp)))
-        (x_out, jvp_out) = self.bn2(*self.conv2(out, jvp_out))
+        (x_out, jvp_out) = self.bn2(*self.conv2(x_out, jvp_out))
         x_short, jvp_short = self.shortcut(x, jvp)
         x_out += x_short
         jvp_out += jvp_short
