@@ -16,11 +16,13 @@ class BasicBlock(nn.Module):
     def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
         super(BasicBlock, self).__init__()
         self.is_last = is_last
+        self.grad_proj = grad_proj
         self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, grad_proj=grad_proj)
         self.bn1 = BatchNorm2d(planes, grad_proj)
         self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=grad_proj)
         self.bn2 = BatchNorm2d(planes, grad_proj)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
+
 
         # self.shortcut = nn.Sequential()
         self.shortcut = Sequential()
@@ -69,7 +71,8 @@ class BasicBlock(nn.Module):
         (x_out, jvp_out) = self.bn2(*self.conv2(x_out, jvp_out))
         x_short, jvp_short = self.shortcut(x, jvp)
         x_out += x_short
-        jvp_out += jvp_short
+        if self.grad_proj:
+            jvp_out += jvp_short
         preact = x_out
         (x_out, jvp_out) = self.relu(x_out, jvp_out)
         if self.is_last: # Change required?
@@ -84,6 +87,7 @@ class Bottleneck(nn.Module):
     def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
         super(Bottleneck, self).__init__()
         self.is_last = is_last
+        self.grad_proj = grad_proj
         self.conv1 = Conv2d(in_planes, planes, kernel_size=1, bias=False, grad_proj=grad_proj)
         self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj)
         self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False,
@@ -142,7 +146,8 @@ class Bottleneck(nn.Module):
 
         x_short, jvp_short = self.shortcut(x)
         x_out += x_short
-        jvp_out += jvp_short
+        if self.grad_proj:
+            jvp_out += jvp_short
 
         preact = x_out
 
@@ -276,7 +281,7 @@ class ResNet(nn.Module):
         (x_out, jvp) = self.layer4(x_out, jvp)
         f4 = x_out
         (x_out, jvp) = self.avgpool(x_out, jvp)
-        x_out = x_out.view(out.size(0), -1)
+        x_out = x_out.view(x_out.size(0), -1)
         f5 = x_out
         (x_out, jvp) = self.linear(x_out, jvp)
         if is_feat:
