@@ -76,34 +76,43 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1, is_last=False):
+    def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
         super(Bottleneck, self).__init__()
         self.is_last = is_last
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion * planes)
+        self.conv1 = Conv2d(in_planes, planes, kernel_size=1, bias=False, grad_proj=grad_proj)
+        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj)
+        self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False,
+                            grad_proj=grad_proj)
+        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj)
+        self.conv3 = Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False, grad_proj=grad_proj)
+        self.bn3 = BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
+        self.relu = ReLU(inplace=True, grad_proj=grad_proj)
 
-        self.shortcut = nn.Sequential()
+        self.shortcut = Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion * planes)
+            self.shortcut = Sequential(
+                Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False,
+                       grad_proj=grad_proj),
+                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
             )
 
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.relu(self.bn2(self.conv2(out)))
-        out = self.bn3(self.conv3(out))
-        out += self.shortcut(x)
-        preact = out
-        out = F.relu(out)
-        if self.is_last:
-            return out, preact
+    def forward(self, x, jvp=None):
+        (x_out, jvp_out) = self.relu(*self.bn1(*self.conv1(x, jvp)))
+        (x_out, jvp_out) = self.relu(*self.bn2(*self.conv2(x_out, jvp_out)))
+        (x_out, jvp_out) = self.bn3(*self.conv3(x_out, jvp_out))
+
+        x_short, jvp_short = self.shortcut(x)
+        x_out += x_short
+        jvp_out += jvp_short
+
+        preact = x_out
+
+        x_out, jvp_out = self.relu(x_out, jvp_out)
+
+        if self.is_last: # Change required?
+            return x_out, preact
         else:
-            return out
+            return x_out, jvp_out
 
 
 class ResNet(nn.Module):
