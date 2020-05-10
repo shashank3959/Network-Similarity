@@ -286,7 +286,7 @@ class ResNet(nn.Module):
         (x_out, jvp) = self.linear(x_out, jvp)
         if is_feat:
             if preact:
-                return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], out]
+                return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], x_out]
             else:
                 return [f0, f1, f2, f3, f4, f5], x_out
         else:
