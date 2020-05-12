@@ -29,7 +29,7 @@ from distiller_zoo import PKT, ABLoss, FactorTransfer, KDSVD, FSP, NSTLoss
 from crd.criterion import CRDLoss
 from ntk import NTKLoss
 
-from helper.loops import train_distill as train, validate
+from helper.loops_rp import train_distill as train, validate
 from helper.pretrain import init
 
 
@@ -85,6 +85,9 @@ def parse_option():
     parser.add_argument('--nce_t', default=0.07, type=float, help='temperature parameter for softmax')
     parser.add_argument('--nce_m', default=0.5, type=float, help='momentum for non-parametric updates')
 
+    # NTK distillation specific arguments
+    parser.add_argument('--grad_proj', default=False, action='store_true')
+
     # hint layer
     parser.add_argument('--hint_layer', default=2, type=int, choices=[0, 1, 2, 3, 4])
 
@@ -133,10 +136,11 @@ def get_teacher_name(model_path):
         return segments[0] + '_' + segments[1] + '_' + segments[2]
 
 
-def load_teacher(model_path, n_cls):
+def load_teacher(model_path, n_cls, grad_proj, device):
     print('==> loading teacher model')
     model_t = get_teacher_name(model_path)
-    model = model_dict[model_t](num_classes=n_cls)
+    # model = model_dict[model_t](num_classes=n_cls)
+    model = model_dict[model_t](num_classes=n_cls, grad_proj=grad_proj, device=device)
     model.load_state_dict(torch.load(model_path)['model'])
     print('==> done')
     return model
@@ -146,6 +150,8 @@ def main():
     best_acc = 0
 
     opt = parse_option()
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
     # tensorboard logger
     logger = tb_logger.Logger(logdir=opt.tb_folder, flush_secs=2)
@@ -166,14 +172,20 @@ def main():
         raise NotImplementedError(opt.dataset)
 
     # model
-    model_t = load_teacher(opt.path_t, n_cls)
-    model_s = model_dict[opt.model_s](num_classes=n_cls)
+    model_t = load_teacher(opt.path_t, n_cls,
+                           grad_proj=opt.grad_proj, device=device)
+    # model_s = model_dict[opt.model_s](num_classes=n_cls)
+    model_s = model_dict[opt.model_s](num_classes=n_cls,
+                                      grad_proj=opt.grad_proj,
+                                      device=device)
 
-    data = torch.randn(2, 3, 32, 32)
+    data = torch.randn(2, 3, 32, 32, device=device)
+    model_t.to(device)
+    model_s.to(device)
     model_t.eval()
     model_s.eval()
-    feat_t, _ = model_t(data, is_feat=True)
-    feat_s, _ = model_s(data, is_feat=True)
+    feat_t, _, _ = model_t(data, is_feat=True)
+    feat_s, _, _ = model_s(data, is_feat=True)
 
     module_list = nn.ModuleList([])
     module_list.append(model_s)
