@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 class Conv2d(nn.Conv2d):
   def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-    padding=0, bias=True, grad_proj=False):
+    padding=0, bias=True, grad_proj=False, device='cpu'):
     """ 
     Args:
       in_channels (int): number of channels in the input.
@@ -21,16 +21,18 @@ class Conv2d(nn.Conv2d):
     """
     super(Conv2d, self).__init__(in_channels, out_channels, kernel_size, 
       stride, padding, bias=bias)
+    self.device = device
     self.reset_grad_proj(grad_proj)
+
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
     if self.grad_proj:
       self.weight_rv = torch.randn(
-        self.out_channels, self.in_channels, *self.kernel_size)
+        self.out_channels, self.in_channels, *self.kernel_size, device=self.device)
       weight_rv_norm_sqr = torch.sum(self.weight_rv ** 2)
       if self.bias is not None:
-        self.bias_rv = torch.randn(self.out_channels)
+        self.bias_rv = torch.randn(self.out_channels, device=self.device)
         bias_rv_norm_sqr = torch.sum(self.bias_rv ** 2)
       else:
         self.register_buffer('bias_rv', None)
@@ -68,7 +70,8 @@ class Conv2d(nn.Conv2d):
 
 
 class Linear(nn.Linear):
-  def __init__(self, in_features, out_features, bias=True, grad_proj=False):
+  def __init__(self, in_features, out_features, bias=True,
+               grad_proj=False, device='cpu'):
     """
     Args:
       in_features (int): number of features in the input.
@@ -79,15 +82,18 @@ class Linear(nn.Linear):
         a randomly sampled Gaussian unit vector. Default: False
     """
     super(Linear, self).__init__(in_features, out_features, bias=bias)
+    self.device = device
     self.reset_grad_proj(grad_proj)
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
     if self.grad_proj:
-      self.weight_rv = torch.randn(self.out_features, self.in_features)
+      self.weight_rv = torch.randn(self.out_features, self.in_features,
+                                   device=self.device)
+
       weight_rv_norm_sqr = torch.sum(self.weight_rv ** 2)
       if self.bias is not None:
-        self.bias_rv = torch.randn(self.out_features)
+        self.bias_rv = torch.randn(self.out_features, device=self.device)
         bias_rv_norm_sqr = torch.sum(self.bias_rv ** 2)
       else:
         self.register_buffer('bias_rv', None)
@@ -123,7 +129,8 @@ class Linear(nn.Linear):
 
 
 class BatchNorm2d(nn.BatchNorm2d):
-  def __init__(self, num_features, eps=1e-5, momentum=0.1, grad_proj=False):
+  def __init__(self, num_features, eps=1e-5, momentum=0.1,
+               grad_proj=False, device='cpu'):
     """
     Args:
       num_features (int): number of features in the input.
@@ -135,13 +142,16 @@ class BatchNorm2d(nn.BatchNorm2d):
         a randomly sampled Gaussian unit vector. Default: False
     """
     super(BatchNorm2d, self).__init__(num_features, eps, momentum)
+    self.device=device
     self.reset_grad_proj(grad_proj)
+
 
   def reset_rv(self):
     """ Samples a Gaussian random vector. """
     if self.grad_proj:
-      self.weight_rv = torch.randn(self.num_features)
-      self.bias_rv = torch.randn(self.num_features)
+      self.weight_rv = torch.randn(self.num_features, device=self.device)
+      self.bias_rv = torch.randn(self.num_features, device=self.device)
+
       weight_rv_norm_sqr = torch.sum(self.weight_rv ** 2)
       bias_rv_norm_sqr = torch.sum(self.bias_rv ** 2)
       self.rv_norm_sqr = weight_rv_norm_sqr + bias_rv_norm_sqr
