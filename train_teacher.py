@@ -16,7 +16,7 @@ from models import model_dict
 from dataset.cifar100 import get_cifar100_dataloaders
 
 from helper.util import adjust_learning_rate, accuracy, AverageMeter
-from helper.loops import train_vanilla as train, validate
+from helper.loops_rp import train_vanilla as train, validate
 
 
 def parse_option():
@@ -44,8 +44,11 @@ def parse_option():
                         choices=['resnet8', 'resnet14', 'resnet20', 'resnet32', 'resnet44', 'resnet56', 'resnet110',
                                  'resnet8x4', 'resnet32x4', 'wrn_16_1', 'wrn_16_2', 'wrn_40_1', 'wrn_40_2',
                                  'vgg8', 'vgg11', 'vgg13', 'vgg16', 'vgg19',
-                                 'MobileNetV2', 'ShuffleV1', 'ShuffleV2', 'resnet50_rp',])
+                                 'MobileNetV2', 'ShuffleV1', 'ShuffleV2', 'ResNet34', 'ResNet50'])
     parser.add_argument('--dataset', type=str, default='cifar100', choices=['cifar100'], help='dataset')
+
+    # NTK distillation specific arguments
+    parser.add_argument('--grad_proj', default=False, action='store_true')
 
     parser.add_argument('-t', '--trial', type=int, default=0, help='the experiment id')
 
@@ -95,7 +98,9 @@ def main():
         raise NotImplementedError(opt.dataset)
 
     # model
-    model = model_dict[opt.model](num_classes=n_cls)
+    # model = model_dict[opt.model](num_classes=n_cls)
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    model = model_dict[opt.model](num_classes=n_cls, grad_proj=True, device=device)
 
     # optimizer
     optimizer = optim.SGD(model.parameters(),

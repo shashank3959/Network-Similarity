@@ -13,14 +13,18 @@ from .modules import *
 class BasicBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
+    def __init__(self, in_planes, planes, stride=1, is_last=False,
+                 grad_proj=False, device='cpu'):
         super(BasicBlock, self).__init__()
         self.is_last = is_last
         self.grad_proj = grad_proj
-        self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, grad_proj=grad_proj)
-        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj)
-        self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=grad_proj)
-        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj)
+        self.device = device
+        self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride,
+                            padding=1, bias=False, grad_proj=grad_proj, device=device)
+        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj, device=device)
+        self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1,
+                            bias=False, grad_proj=grad_proj, device=device)
+        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj, device=device)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
 
 
@@ -28,8 +32,9 @@ class BasicBlock(nn.Module):
         self.shortcut = Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = Sequential(
-                Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, grad_proj=grad_proj),
-                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
+                Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride,
+                       bias=False, grad_proj=grad_proj, device=self.device),
+                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj, device=self.device)
             )
         self._compute_rv_norm_sqr()
 
@@ -84,25 +89,30 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1, is_last=False, grad_proj=False):
+    def __init__(self, in_planes, planes, stride=1, is_last=False,
+                 grad_proj=False, device='cpu'):
         super(Bottleneck, self).__init__()
         self.is_last = is_last
         self.grad_proj = grad_proj
-        self.conv1 = Conv2d(in_planes, planes, kernel_size=1, bias=False, grad_proj=grad_proj)
-        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj)
+        self.device = device
+        self.conv1 = Conv2d(in_planes, planes, kernel_size=1,
+                            bias=False, grad_proj=grad_proj, device=device)
+        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj, device=device)
         self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False,
-                            grad_proj=grad_proj)
-        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj)
-        self.conv3 = Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False, grad_proj=grad_proj)
-        self.bn3 = BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
+                            grad_proj=grad_proj, device=device)
+        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj, device=device)
+        self.conv3 = Conv2d(planes, self.expansion * planes, kernel_size=1,
+                            bias=False, grad_proj=grad_proj, device=device)
+        self.bn3 = BatchNorm2d(self.expansion * planes,
+                               grad_proj=grad_proj, device=device)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
 
         self.shortcut = Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = Sequential(
                 Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False,
-                       grad_proj=grad_proj),
-                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
+                       grad_proj=grad_proj, device=device),
+                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj, device=device)
             )
 
         self._compute_rv_norm_sqr()
@@ -161,20 +171,22 @@ class Bottleneck(nn.Module):
 
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10, zero_init_residual=False,
-                 grad_proj=False):
+                 grad_proj=False, device='cpu'):
         super(ResNet, self).__init__()
         self.in_planes = 64
         self.grad_proj = grad_proj
+        self.device = device
 
-        self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=self.grad_proj)
+        self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1,
+                            bias=False, grad_proj=self.grad_proj, device=device)
         self.bn1 = BatchNorm2d(64, self.grad_proj)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1, grad_proj=grad_proj)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2, grad_proj=grad_proj)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2, grad_proj=grad_proj)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, grad_proj=grad_proj)
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1, grad_proj=grad_proj, device=device)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2, grad_proj=grad_proj, device=device)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2, grad_proj=grad_proj, device=device)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, grad_proj=grad_proj, device=device)
         self.avgpool = AdaptiveAvgPool2d((1, 1), grad_proj=grad_proj)
-        self.linear = Linear(512 * block.expansion, num_classes, grad_proj=grad_proj)
+        self.linear = Linear(512 * block.expansion, num_classes, grad_proj=grad_proj, device=device)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -222,12 +234,14 @@ class ResNet(nn.Module):
 
         return [bn1, bn2, bn3, bn4]
 
-    def _make_layer(self, block, planes, num_blocks, stride, grad_proj=False):
+    def _make_layer(self, block, planes, num_blocks, stride,
+                    grad_proj=False, device='cpu'):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for i in range(num_blocks):
             stride = strides[i]
-            layers.append(block(self.in_planes, planes, stride, i == num_blocks - 1, grad_proj=grad_proj))
+            layers.append(block(self.in_planes, planes, stride, i == num_blocks - 1,
+                                grad_proj=grad_proj, device=device))
             self.in_planes = planes * block.expansion
         return Sequential(*layers)
 
@@ -270,7 +284,6 @@ class ResNet(nn.Module):
 
     # WARNING: Preactivation based method will not work now
     def forward(self, x, is_feat=False, preact=False):
-        jvp1 = self.conv1(x)
         (x_out, jvp) = self.relu(*self.bn1(*self.conv1(x)))
         f0 = x_out
         (x_out, jvp) = self.layer1(x_out, jvp)
@@ -284,7 +297,12 @@ class ResNet(nn.Module):
         (x_out, jvp) = self.avgpool(x_out, jvp)
         x_out = x_out.view(x_out.size(0), -1)
         f5 = x_out
-        (x_out, jvp) = self.linear(x_out, torch.flatten(jvp, 1))
+
+        if jvp is not None:
+            (x_out, jvp) = self.linear(x_out, torch.flatten(jvp, 1))
+        else:
+            (x_out, jvp) = self.linear(x_out)
+
         if is_feat:
             if preact:
                 return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], x_out]
