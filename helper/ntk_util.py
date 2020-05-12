@@ -47,3 +47,18 @@ def generate_featuremaps(net, image_data, targets, args, fmap, isStudent=True):
         net.train()
 
     return fmap
+
+
+def generate_partial_ntk(jvp, ntk_partial):
+    """
+    Takes in a jacobian vector product of shape batch-size x num_classes
+    and generates a pairwise outerproduct.
+    """
+    # NOTE: Is it possible to do this using batched mm and broadcasting.
+    batch_size = jvp.shape[0]
+    for i in range(batch_size):
+        for j in range(batch_size):
+            # outer product between elements i and j
+            ntk_partial[i][j] = torch.ger(jvp[i], jvp[j])
+
+    return ntk_partial
