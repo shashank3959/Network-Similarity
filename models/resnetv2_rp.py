@@ -18,20 +18,19 @@ class BasicBlock(nn.Module):
         self.is_last = is_last
         self.grad_proj = grad_proj
         self.conv1 = Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False, grad_proj=grad_proj)
-        self.bn1 = BatchNorm2d(planes, grad_proj)
+        self.bn1 = BatchNorm2d(planes, grad_proj=grad_proj)
         self.conv2 = Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=grad_proj)
-        self.bn2 = BatchNorm2d(planes, grad_proj)
+        self.bn2 = BatchNorm2d(planes, grad_proj=grad_proj)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
 
 
         # self.shortcut = nn.Sequential()
         self.shortcut = Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
-            self.shortcut, jvp = Sequential(
+            self.shortcut = Sequential(
                 Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False, grad_proj=grad_proj),
-                BatchNorm2d(self.expansion * planes, grad_proj)
+                BatchNorm2d(self.expansion * planes, grad_proj=grad_proj)
             )
-
         self._compute_rv_norm_sqr()
 
     def _compute_rv_norm_sqr(self):
@@ -71,10 +70,11 @@ class BasicBlock(nn.Module):
         (x_out, jvp_out) = self.bn2(*self.conv2(x_out, jvp_out))
         x_short, jvp_short = self.shortcut(x, jvp)
         x_out += x_short
-        if self.grad_proj:
+        if self.grad_proj and jvp_short != None:
             jvp_out += jvp_short
         preact = x_out
         (x_out, jvp_out) = self.relu(x_out, jvp_out)
+
         if self.is_last: # Change required?
             return x_out, preact
         else:
@@ -144,9 +144,9 @@ class Bottleneck(nn.Module):
         (x_out, jvp_out) = self.relu(*self.bn2(*self.conv2(x_out, jvp_out)))
         (x_out, jvp_out) = self.bn3(*self.conv3(x_out, jvp_out))
 
-        x_short, jvp_short = self.shortcut(x)
+        x_short, jvp_short = self.shortcut(x, jvp)
         x_out += x_short
-        if self.grad_proj:
+        if self.grad_proj and jvp_short != None:
             jvp_out += jvp_short
 
         preact = x_out
@@ -169,10 +169,10 @@ class ResNet(nn.Module):
         self.conv1 = Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False, grad_proj=self.grad_proj)
         self.bn1 = BatchNorm2d(64, self.grad_proj)
         self.relu = ReLU(inplace=True, grad_proj=grad_proj)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1, grad_proj=grad_proj)
+        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2, grad_proj=grad_proj)
+        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2, grad_proj=grad_proj)
+        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2, grad_proj=grad_proj)
         self.avgpool = AdaptiveAvgPool2d((1, 1), grad_proj=grad_proj)
         self.linear = Linear(512 * block.expansion, num_classes, grad_proj=grad_proj)
 
@@ -222,12 +222,12 @@ class ResNet(nn.Module):
 
         return [bn1, bn2, bn3, bn4]
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, grad_proj=False):
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for i in range(num_blocks):
             stride = strides[i]
-            layers.append(block(self.in_planes, planes, stride, i == num_blocks - 1))
+            layers.append(block(self.in_planes, planes, stride, i == num_blocks - 1, grad_proj=grad_proj))
             self.in_planes = planes * block.expansion
         return Sequential(*layers)
 
@@ -270,6 +270,7 @@ class ResNet(nn.Module):
 
     # WARNING: Preactivation based method will not work now
     def forward(self, x, is_feat=False, preact=False):
+        jvp1 = self.conv1(x)
         (x_out, jvp) = self.relu(*self.bn1(*self.conv1(x)))
         f0 = x_out
         (x_out, jvp) = self.layer1(x_out, jvp)
@@ -283,7 +284,7 @@ class ResNet(nn.Module):
         (x_out, jvp) = self.avgpool(x_out, jvp)
         x_out = x_out.view(x_out.size(0), -1)
         f5 = x_out
-        (x_out, jvp) = self.linear(x_out, jvp)
+        (x_out, jvp) = self.linear(x_out, torch.flatten(jvp, 1))
         if is_feat:
             if preact:
                 return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], x_out]
