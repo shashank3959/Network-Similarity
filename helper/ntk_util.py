@@ -55,7 +55,9 @@ def generate_partial_ntk(jvp, ntk_partial):
     and generates a pairwise outerproduct.
     """
     # NOTE: Is it possible to do this using batched mm and broadcasting.
+    num_cls = 100
     batch_size = jvp.shape[0]
+    ntk_partial = ntk_partial.new_zeros((batch_size, batch_size, num_cls, num_cls), requires_grad=True)
     for i in range(batch_size):
         for j in range(batch_size):
             # outer product between elements i and j

@@ -56,7 +56,6 @@ class BasicBlock(nn.Module):
 
     def reset_grad_proj(self, grad_proj):
         """ Turns on/off Jacobian projection. """
-        self.grad_proj = grad_proj
         self.conv1.reset_grad_proj(grad_proj)
         self.conv2.reset_grad_proj(grad_proj)
         self.bn1.reset_grad_proj(grad_proj)
@@ -307,7 +306,7 @@ class ResNet(nn.Module):
             if preact:
                 return [[f0, f1_pre, f2_pre, f3_pre, f4_pre, f5], x_out]
             else:
-                return [f0, f1, f2, f3, f4, f5], x_out
+                return [f0, f1, f2, f3, f4, f5], x_out, jvp
         else:
             return (x_out, jvp)
 

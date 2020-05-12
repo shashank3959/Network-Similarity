@@ -99,6 +99,7 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
     n_cls = 100
     ntk_s = torch.zeros(batch_size, batch_size, n_cls, n_cls, requires_grad=True).cuda()
     ntk_t = torch.zeros(batch_size, batch_size, n_cls, n_cls, requires_grad=True).cuda()
+    ntk_loss = torch.zeros(1, requires_grad=True).cuda()
 
     for idx, data in enumerate(train_loader):
         if opt.distill in ['crd']:
@@ -126,9 +127,21 @@ def train_distill(epoch, train_loader, module_list, criterion_list, optimizer, o
                 with torch.no_grad():
                     logit_t, jvp_t = model_t(input)
 
+                # cls + kl div
+                loss_cls = criterion_cls(logit_s, target)
+                loss_div = criterion_div(logit_s, logit_t)
+
                 # jvp is of shape batch_size x n_classes
                 ntk_s = generate_partial_ntk(jvp_s, ntk_s)
                 ntk_t = generate_partial_ntk(jvp_t, ntk_t)
+                ntk_loss += (ntk_s - ntk_t).sum()
+
+                # Memory leak here
+                ntk_loss.retain_grad()
+                ntk_loss.backward(retain_graph=True)
+                print(jvp_t.grad)
+                ntk_loss = 0.
+
 
 
 
